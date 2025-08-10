@@ -4,10 +4,117 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import torch
+import shutil
 
 DEF_NAME = "model_last.pt"
 
-# ----- helpers -----
+# ----------------------------- TB-only helpers (safe no-ops otherwise) ----------------------------- #
+def _is_tb(logger) -> bool:
+    return hasattr(logger, "hist")
+
+def _log_hparams_tb(logger, args, total_steps):
+    if not _is_tb(logger): return
+    try:
+        h = dict(
+            vocab_size=args.vocab_size, block_size=args.block_size, n_layer=args.n_layer,
+            n_head=args.n_head, n_embd=args.n_embd, dropout=args.dropout, lr=args.lr,
+            warmup_steps=args.warmup_steps, batch_size=args.batch_size, grad_accum=args.grad_accum_steps,
+            mixed_precision=args.mixed_precision, steps=args.steps, epochs=args.epochs,
+        )
+        logger.hparams(h, {"meta/total_steps": float(total_steps)})
+    except Exception:
+        pass
+
+def _maybe_log_graph_tb(logger, model, xb, yb):
+    if not hasattr(logger, "graph"): 
+        return
+    try:
+        class _TensorOnly(nn.Module):
+            def __init__(self, m): 
+                super().__init__(); self.m = m.eval()
+            def forward(self, x, y=None):
+                out = self.m(x, y) if y is not None else self.m(x)
+                if isinstance(out, (list, tuple)):
+                    for o in out:
+                        if torch.is_tensor(o):
+                            return o
+                    return out[0]
+                return out
+        wrapped = _TensorOnly(model).to(xb.device)
+        logger.graph(wrapped, (xb, yb))
+    except Exception:
+        pass
+
+def _log_model_stats(logger, model, step: int, do_hists: bool = False):
+    if not _is_tb(logger): return
+    try:
+        params = [p for p in model.parameters() if p.requires_grad]
+        total_param_norm = torch.norm(torch.stack([p.detach().norm(2) for p in params]), 2).item()
+        grads = [p.grad for p in params if p.grad is not None]
+        total_grad_norm = float('nan')
+        if grads:
+            total_grad_norm = torch.norm(torch.stack([g.detach().norm(2) for g in grads]), 2).item()
+        logger.log(step=step, **{
+            "train/param_global_l2": total_param_norm,
+            "train/grad_global_l2": total_grad_norm,
+        })
+        if do_hists:
+            for name, p in model.named_parameters():
+                logger.hist(f"params/{name}", p, step)
+                if p.grad is not None:
+                    logger.hist(f"grads/{name}", p.grad, step)
+    except Exception:
+        pass
+
+def _maybe_log_attention(logger, model, step: int, every: int = 100, window: int = 2):
+    if not _is_tb(logger): return
+    if step == 0 or (step % every): return
+    try:
+        with torch.no_grad():
+            for name, m in model.named_modules():
+                p = getattr(m, "last_attn", None)  # [B,H,Tq,Tk]
+                if p is None: continue
+                eps = 1e-12
+                p_eps = p.clamp_min(eps)
+                ent = (-p_eps * p_eps.log()).sum(dim=-1).mean().item()
+                B,H,Tq,Tk = p.shape
+                i = torch.arange(Tq, device=p.device).unsqueeze(-1)
+                j = torch.arange(Tk, device=p.device).unsqueeze(0)
+                diag = ((p * ((j - i).abs() <= window)).sum(dim=-1)).mean().item()
+                logger.log(step=step, **{
+                    f"attn/{name}/entropy": ent,
+                    f"attn/{name}/diagonal_mass_w{window}": diag
+                })
+    except Exception:
+        pass
+
+def _log_runtime(logger, step: int, it_t0: float, xb, device):
+    try:
+        dt = time.time() - it_t0
+        toks = int(xb.numel())
+        toks_per_s = toks / max(dt, 1e-6)
+        mem = torch.cuda.memory_allocated()/(1024**2) if torch.cuda.is_available() else 0.0
+        logger.log(step=step, **{
+            "sys/throughput_tokens_per_s": toks_per_s,
+            "sys/step_time_s": dt,
+            "sys/gpu_mem_alloc_mb": mem
+        })
+    except Exception:
+        pass
+
+def _log_samples_tb(logger, model, tok, xb, device, step: int, max_new_tokens: int = 64):
+    if not _is_tb(logger): return
+    if tok is None: return
+    try:
+        model.eval()
+        with torch.no_grad():
+            out = model.generate(xb[:1].to(device), max_new_tokens=max_new_tokens, temperature=1.0, top_k=50)
+        model.train()
+        text = tok.decode(out[0].tolist())
+        logger.text("samples/generation", text, step)
+    except Exception:
+        pass
+# ---------------------------------------------------------------------- #
 
 def _extract_config_from_model(model) -> dict:
     """
@@ -124,3 +231,24 @@ def load_checkpoint(model, path: str, optimizer=None, scheduler=None, amp=None, 
         amp.scaler.load_state_dict(ckpt["amp_scaler"])
 
     return ckpt.get("step", 0)
+
+# ----------------------------- checkpoint/save utils ----------------------------- #
+def checkpoint_paths(out_dir: Path, step: int):
+    return out_dir / f"model_step{step:07d}.pt", out_dir / "model_last.pt"
+
+def atomic_save_all(model, optim, sched, amp, step: int, out_dir: Path,
+                    tok_dir: str | None, keep_last_k: int, config: dict):
+    """Write model_last.pt (with config) + a rolling per-step copy."""
+    save_checkpoint(model, optim, sched, amp, step, str(out_dir), tok_dir, config=config)  # writes model_last.pt
+    per_step, last = checkpoint_paths(out_dir, step)
+    try:
+        shutil.copy2(last, per_step)
+    except Exception:
+        pass
+    # GC old per-step checkpoints
+    try:
+        ckpts = sorted(out_dir.glob("model_step*.pt"))
+        for old in ckpts[:-keep_last_k]:
+            old.unlink(missing_ok=True)
+    except Exception:
+        pass
