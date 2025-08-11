@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from rope import RoPECache, apply_rope
+from rope_custom import RoPECache, apply_rope
 from kv_cache import KVCache
 
 class CausalSelfAttentionModern(nn.Module):

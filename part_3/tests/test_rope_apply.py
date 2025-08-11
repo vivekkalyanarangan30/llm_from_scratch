@@ -1,5 +1,5 @@
 import torch
-from rope import RoPECache, apply_rope
+from rope_custom import RoPECache, apply_rope
 
 def test_rope_rotation_shapes():
     B,H,T,D = 1, 2, 5, 8
