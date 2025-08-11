@@ -25,7 +25,7 @@
 #   python orchestrator.py --visualize
 
 
-import subprocess, sys, pathlib, argparse
+import subprocess, sys, pathlib, argparse, shlex
 
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "out"
@@ -33,7 +33,7 @@ OUT = ROOT / "out"
 
 def run(cmd: str):
     print(f"\n>>> {cmd}")
-    res = subprocess.run(cmd.split(), cwd=ROOT)
+    res = subprocess.run(shlex.split(cmd), cwd=ROOT)
     if res.returncode != 0:
         sys.exit(res.returncode)
 

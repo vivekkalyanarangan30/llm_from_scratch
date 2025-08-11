@@ -54,6 +54,8 @@
 - **6.4** Evaluating outputs against gold responses
 - **Milestone:** Your model can follow basic instructions.
 
+
+## TODOs:
 ## Part 7 — Reward Modeling
 - **7.1** Preference datasets (pairwise rankings)
 - **7.2** Reward model architecture (shared transformer encoder)
