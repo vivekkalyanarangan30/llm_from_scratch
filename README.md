@@ -4,6 +4,10 @@
 - **0.1** Understanding the high-level LLM training pipeline (pretraining → finetuning → alignment)
 - **0.2** Hardware & software environment setup (PyTorch, CUDA, mixed precision, profiling tools)
 
+```
+conda create -n llm_from_scratch python=3.11
+```
+
 ## Part 1 — Core Transformer Architecture
 - **1.1** Positional embeddings (absolute learned vs. sinusoidal)
 - **1.2** Self-attention from first principles (manual computation with a tiny example)
