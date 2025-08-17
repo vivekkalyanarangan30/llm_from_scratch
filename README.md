@@ -6,6 +6,8 @@
 
 ```
 conda create -n llm_from_scratch python=3.11
+conda activate llm_from_scratch
+pip install -r requirements.txt
 ```
 
 ## Part 1 — Core Transformer Architecture
@@ -58,14 +60,14 @@ conda create -n llm_from_scratch python=3.11
 - **6.4** Evaluating outputs against gold responses
 - **Milestone:** Your model can follow basic instructions.
 
-
-## TODOs:
 ## Part 7 — Reward Modeling
 - **7.1** Preference datasets (pairwise rankings)
 - **7.2** Reward model architecture (shared transformer encoder)
 - **7.3** Loss functions: Bradley–Terry, margin ranking loss
 - **7.4** Sanity checks for reward shaping
 - **Milestone:** Reward model that can score outputs for helpfulness.
+
+## TODOs:
 
 ## Part 8 — RLHF, DPO & GRPO
 - **8.1** PPO: policy, value head, KL penalty
