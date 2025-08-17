@@ -17,9 +17,11 @@ try:
 except Exception:
     ByteTokenizer = None
 
-print(str(_P(__file__).resolve().parents[1]/'part_6'))
 sys.path.append(str(_P(__file__).resolve().parents[1]/'part_6'))
-from formatters import Example, format_example  # reuse formatting
+try:
+    from formatters import Example, format_example  # reuse formatting
+except Exception:
+    pass
 
 class PairCollator:
     """Tokenize preference pairs into (pos, neg) input ids.
