@@ -18,7 +18,6 @@ pip install -r requirements.txt
 - **1.5** Feed-forward networks (MLP layers) — GELU, dimensionality expansion
 - **1.5** Residual connections & **LayerNorm**
 - **1.6** Stacking into a full Transformer block
-- **Milestone:** Minimal GPT-like model that overfits on a toy dataset.
 
 ## Part 2 — Training a Tiny LLM
 - **2.1** Byte-level tokenization
@@ -27,7 +26,6 @@ pip install -r requirements.txt
 - **2.4** Training loop from scratch (no Trainer API)
 - **2.5** Sampling: temperature, top-k, top-p
 - **2.6** Evaluating loss on val set
-- **Milestone:** Train on a 100KB text file and generate coherent snippets.
 
 ## Part 3 — Modernizing the Architecture
 - **3.1** **RMSNorm** (replace LayerNorm, compare gradients & convergence)
@@ -36,7 +34,6 @@ pip install -r requirements.txt
 - **3.4** KV cache for faster inference
 - **3.5** Sliding-window attention & **attention sink**
 - **3.6** Rolling buffer KV cache for streaming
-- **Milestone:** Benchmarks before vs. after each upgrade.
 
 ## Part 4 — Scaling Up
 - **4.1** Switching from byte-level to BPE tokenization
@@ -44,28 +41,24 @@ pip install -r requirements.txt
 - **4.3** Learning rate schedules & warmup
 - **4.4** Checkpointing & resuming
 - **4.5** Logging & visualization (TensorBoard / wandb)
-- **Milestone:** Train a 10–50M param model on a medium dataset.
 
 ## Part 5 — Mixture-of-Experts (MoE)
 - **5.1** MoE theory: expert routing, gating networks, and load balancing
 - **5.2** Implementing MoE layers in PyTorch
 - **5.3** Training stability and communication overhead in distributed setups
 - **5.4** Combining MoE with dense layers for hybrid architectures
-- **Milestone:** MoE-augmented model with measurable efficiency or accuracy gains.
 
 ## Part 6 — Supervised Fine-Tuning (SFT)
 - **6.1** Instruction dataset formatting (prompt + response)
 - **6.2** Causal LM loss with masked labels
 - **6.3** Curriculum learning for instruction data
 - **6.4** Evaluating outputs against gold responses
-- **Milestone:** Your model can follow basic instructions.
 
 ## Part 7 — Reward Modeling
 - **7.1** Preference datasets (pairwise rankings)
 - **7.2** Reward model architecture (shared transformer encoder)
 - **7.3** Loss functions: Bradley–Terry, margin ranking loss
 - **7.4** Sanity checks for reward shaping
-- **Milestone:** Reward model that can score outputs for helpfulness.
 
 ## Part 8 — RLHF with PPO
 - **8.1** Policy network: our base LM (from SFT) with a value head for reward prediction.
@@ -73,4 +66,3 @@ pip install -r requirements.txt
 - **8.3** PPO objective: balance between maximizing reward and staying close to the SFT policy (KL penalty).
 - **8.4** Training loop: sample prompts → generate completions → score with reward model → optimize policy via PPO.
 - **8.5** Logging & stability tricks: reward normalization, KL-controlled rollout length, gradient clipping.
-- **Milestone:** The model can refine its responses using feedback, moving closer to human-preferred outputs.
