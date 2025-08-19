@@ -92,7 +92,6 @@ def main():
                 ids = ids + [val]*(tok.block_size - len(ids))
             return ids[:tok.block_size]
         x = torch.tensor([pad_to(ids, 0) for ids in in_ids], dtype=torch.long, device=device)
-        # x = torch.tensor([ids[-block_size:] for ids in in_ids], dtype=torch.long, device=device)
 
         with torch.no_grad():
             out = policy.generate(x, max_new_tokens=args.resp_len, temperature=1.0, top_k=50)
@@ -113,34 +112,21 @@ def main():
             data.append((torch.tensor(full, dtype=torch.long), boundary, r_scalar))
 
         # pad to same length
-        # 1) Cap by policy context (single-line change you asked for)
         policy_ctx = getattr(policy, "block_size", block_size)
         max_len = min(policy_ctx, max(t[0].numel() for t in data))
-
-        # max_len = max(t[0].numel() for t in data)
         B = len(data)
         seq = torch.zeros(B, max_len, dtype=torch.long, device=device)
         mask = torch.zeros(B, max_len, dtype=torch.bool, device=device)
         last_idx = torch.zeros(B, dtype=torch.long, device=device)
         rewards = torch.zeros(B, max_len, dtype=torch.float, device=device)
-        # for i,(ids, boundary, r_scalar) in enumerate(data):
-        #     L = ids.numel()
-        #     seq[i,:L] = ids
-        #     # action mask = response positions
-        #     mask[i,boundary:L] = True
-        #     # terminal reward at last token
-        #     rewards[i,L-1] = r_scalar
-        #     last_idx[i] = L-1
 
-        # 2) Minimal per-sample adjustments so shapes/masks stay valid
         for i, (ids, boundary, r_scalar) in enumerate(data):
             L_full = ids.numel()
-            L = min(L_full, max_len)          # was: L = ids.numel()
+            L = min(L_full, max_len)
             drop = L_full - L                 # tokens dropped from the left
             b = max(0, boundary - drop)       # shift boundary after left-trim
-
-            seq[i, :L] = ids[-L:]             # was: seq[i, :L] = ids
-            mask[i, b:L] = True               # was: mask[i, boundary:L] = True
+            seq[i, :L] = ids[-L:]
+            mask[i, b:L] = True
             rewards[i, L-1] = r_scalar
             last_idx[i] = L-1
 
