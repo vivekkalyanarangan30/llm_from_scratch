@@ -67,7 +67,7 @@ pip install -r requirements.txt
 - **7.4** Sanity checks for reward shaping
 - **Milestone:** Reward model that can score outputs for helpfulness.
 
-## Part 8 — RLHF, DPO & GRPO
+## Part 8 — RLHF with PPO
 - **8.1** Policy network: our base LM (from SFT) with a value head for reward prediction.
 - **8.2** Reward signal: provided by the reward model trained in Part 7.
 - **8.3** PPO objective: balance between maximizing reward and staying close to the SFT policy (KL penalty).
