@@ -67,15 +67,16 @@ pip install -r requirements.txt
 - **7.4** Sanity checks for reward shaping
 - **Milestone:** Reward model that can score outputs for helpfulness.
 
-## TODOs:
-
 ## Part 8 — RLHF, DPO & GRPO
-- **8.1** PPO: policy, value head, KL penalty
-- **8.2** GRPO: group relative preference optimization
-- **8.3** DPO: direct preference optimization
-- **8.4** Integrating reward model & generator
-- **8.5** Stabilizing training with reward normalization
-- **Milestone:** Aligned chatbot with reasoning-friendly outputs.
+- **8.1** Policy network: our base LM (from SFT) with a value head for reward prediction.
+- **8.2** Reward signal: provided by the reward model trained in Part 7.
+- **8.3** PPO objective: balance between maximizing reward and staying close to the SFT policy (KL penalty).
+- **8.4** Training loop: sample prompts → generate completions → score with reward model → optimize policy via PPO.
+- **8.5** Logging & stability tricks: reward normalization, KL-controlled rollout length, gradient clipping.
+- **Milestone:** The model can refine its responses using feedback, moving closer to human-preferred outputs.
+
+
+## TODOs:
 
 ## Part 9 — Reasoning & Advanced Tricks
 - **9.1** Chain-of-thought prompting & self-consistency
