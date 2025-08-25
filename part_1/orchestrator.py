@@ -45,8 +45,6 @@ def main():
 
     OUT.mkdir(exist_ok=True)
 
-    # 1.1 positional encodings quick check (optional tiny run can be added later)
-
     # 1.2 sanity check: NumPy tiny example
     run("python attn_numpy_demo.py")
 
