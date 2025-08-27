@@ -31,7 +31,8 @@ class GPTModern(nn.Module):
         B, T = idx.shape
         assert T <= self.block_size
         pos = torch.arange(0, T, device=idx.device).unsqueeze(0)
-        x = self.tok_emb(idx) + self.pos_emb(pos)
+        x = self.tok_emb(idx) 
+        # + self.pos_emb(pos)
         x = self.drop(x)
 
         new_caches = []
@@ -50,23 +51,58 @@ class GPTModern(nn.Module):
 
     @torch.no_grad()
     def generate(self, prompt: torch.Tensor, max_new_tokens=200, temperature=1.0, top_k=50, top_p=None,
-                 sliding_window: int | None = None, attention_sink: int = 0):
-        # optional nucleus/top-k import from Part 2
+                sliding_window: int | None = None, attention_sink: int = 0):
         try:
             from utils import top_k_top_p_filtering as _tk
         except Exception:
             _tk = lambda x, **_: x
+
         self.eval()
         idx = prompt
         kvs = [None] * len(self.blocks)
+
         for _ in range(max_new_tokens):
-            # crop context for the model, but compute absolute start_pos correctly
-            idx_cond = idx[:, -self.block_size:]
-            start_pos = idx.size(1) - idx_cond.size(1)
+            # feed full prompt once; then only the last token
+            idx_cond = idx[:, -self.block_size:] if kvs[0] is None else idx[:, -1:]
+
+            # absolute start position from cache length (0 on first step)
+            start_pos = 0 if kvs[0] is None else kvs[0].k.size(2)
+
             logits, _, kvs = self(idx_cond, kv_cache_list=kvs, start_pos=start_pos)
-            logits = logits[:, -1, :] / max(temperature, 1e-6)
-            logits = _tk(logits, top_k=top_k, top_p=top_p)
-            probs = torch.softmax(logits, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1)
+
+            next_logits = logits[:, -1, :] / max(temperature, 1e-6)
+            next_logits = _tk(next_logits, top_k=top_k, top_p=top_p)
+            probs = torch.softmax(next_logits, dim=-1)
+            next_id = torch.argmax(probs, dim=-1, keepdim=True) if temperature == 0.0 else torch.multinomial(probs, 1)
             idx = torch.cat([idx, next_id], dim=1)
+
         return idx
+
+
+    @torch.no_grad()
+    def generate_nocache(self, prompt: torch.Tensor, max_new_tokens=200, temperature=1.0, top_k=50, top_p=None,
+                sliding_window: int | None = None, attention_sink: int = 0):
+        try:
+            from utils import top_k_top_p_filtering as _tk
+        except Exception:
+            _tk = lambda x, **_: x
+
+        self.eval()
+        idx = prompt
+
+        for _ in range(max_new_tokens):
+            # always run a full forward over the cropped window, with NO cache
+            idx_cond = idx[:, -self.block_size:]
+            # absolute position of first token in the window (matches cached path)
+            start_pos = idx.size(1) - idx_cond.size(1)
+
+            logits, _, _ = self(idx_cond, kv_cache_list=None, start_pos=start_pos)
+
+            next_logits = logits[:, -1, :] / max(temperature, 1e-6)
+            next_logits = _tk(next_logits, top_k=top_k, top_p=top_p)
+            probs = torch.softmax(next_logits, dim=-1)
+            next_id = torch.argmax(probs, dim=-1, keepdim=True) if temperature == 0.0 else torch.multinomial(probs, 1)
+            idx = torch.cat([idx, next_id], dim=1)
+
+        return idx
+

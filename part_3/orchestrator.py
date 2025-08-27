@@ -43,6 +43,6 @@ if __name__ == "__main__":
 
     # 2) (optional) generation demo
     if args.demo:
-        run("python demo_generate.py --rmsnorm --rope --swiglu --sliding_window 64 --sink 4 --tokens 120")
+        run("python demo_generate.py --rmsnorm --rope --swiglu --sliding_window 64 --sink 4 --tokens 200")
 
     print("\nPart 3 checks complete. ✅")
