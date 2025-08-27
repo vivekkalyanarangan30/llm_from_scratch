@@ -17,7 +17,6 @@ class GPTModern(nn.Module):
         super().__init__()
         self.block_size = block_size
         self.tok_emb = nn.Embedding(vocab_size, n_embd)
-        # keep learned pos emb for ablations; when rope=True they are less critical
         self.pos_emb = nn.Embedding(block_size, n_embd)
         self.drop = nn.Dropout(dropout)
         self.blocks = nn.ModuleList([
