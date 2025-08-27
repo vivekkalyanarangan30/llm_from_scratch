@@ -31,25 +31,18 @@ class RoPECache:
         self.cos = torch.cos(freqs)
         self.sin = torch.sin(freqs)
 
-
-def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
-    """Rotate pairs of last-dim features for q,k.
-    q,k: (B,H,T,D) with D even
-    cos,sin: (T,D/2) → broadcast to (1,1,T,D/2)
+def apply_rope_single(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotate pairs along last dim for RoPE.
+    x: (B,H,T,D) with D even; cos/sin: (T,D/2)
     """
-    B,H,T,D = q.shape
-    assert D % 2 == 0
+    assert x.size(-1) % 2 == 0
     cos = cos.unsqueeze(0).unsqueeze(0)  # (1,1,T,D/2)
     sin = sin.unsqueeze(0).unsqueeze(0)
-
-    def _rotate(x):
-        x1 = x[..., ::2]   # (B,H,T,D/2)
-        x2 = x[..., 1::2]
-        xr1 = x1 * cos - x2 * sin
-        xr2 = x1 * sin + x2 * cos
-        out = torch.empty_like(x)
-        out[..., ::2] = xr1
-        out[..., 1::2] = xr2
-        return out
-
-    return _rotate(q), _rotate(k)
+    x1 = x[..., ::2]
+    x2 = x[..., 1::2]
+    xr1 = x1 * cos - x2 * sin
+    xr2 = x1 * sin + x2 * cos
+    out = torch.empty_like(x)
+    out[..., ::2] = xr1
+    out[..., 1::2] = xr2
+    return out
