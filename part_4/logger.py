@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+from pathlib import Path
 
 class NoopLogger:
     def log(self, **kwargs):
@@ -22,20 +23,22 @@ class TBLogger(NoopLogger):
       - If a value in .log(...) is a tensor/ndarray with >1 element, it logs a histogram.
       - If key starts with "text/", logs as text.
     """
-    def __init__(self, out_dir: str, flush_secs: int = 10):
+    # logger.py
+    def __init__(self, out_dir: str, flush_secs: int = 10, run_name: str | None = None):
+        self.w = None
+        self.hparams_logged = False
+        run_name = run_name or time.strftime("%Y%m%d-%H%M%S")
+        run_dir = Path(out_dir) / run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
         try:
-            from torch.utils.tensorboard import SummaryWriter  # type: ignore
-            self._tb_ok = True
-        except Exception:
-            self._tb_ok = False
-            self.w = None
-            return
-        from torch.utils.tensorboard import SummaryWriter  # re-import in scope
+            from torch.utils.tensorboard import SummaryWriter
+            self.w = SummaryWriter(log_dir=str(run_dir), flush_secs=flush_secs)
+        except Exception as e:
+            print(f"[TBLogger] TensorBoard not available: {e}. Logging disabled.")
+        self._auto_hist_max_elems = 2048
+        self.run_dir = str(run_dir)  # handy for prints/debug
 
-        self.w = SummaryWriter(log_dir=out_dir, flush_secs=flush_secs)
 
-        # simple heuristics
-        self._auto_hist_max_elems = 2048  # won't histogram giant tensors by accident
 
     # ---------- backwards-compatible ----------
     def log(self, step: Optional[int] = None, **kv: Any):
@@ -119,9 +122,12 @@ class TBLogger(NoopLogger):
             pass  # graph tracing can fail depending on model control flow; don't crash
 
     def hparams(self, hparams: Dict[str, Any], metrics_once: Optional[Dict[str, float]] = None):
-        if not self.w: return
+        if not self.w or self.hparams_logged:
+            return
         try:
-            self.w.add_hparams(hparams, metrics_once or {})
+            # Single, stable sub-run so it doesn’t spam the left pane
+            self.w.add_hparams(hparams, metrics_once or {}, run_name="_hparams")
+            self.hparams_logged = True
         except Exception:
             pass
 
@@ -149,7 +155,8 @@ class WBLogger(NoopLogger):
 
 def init_logger(which: str, out_dir: str = "runs/part4"):
     if which == 'tensorboard':
-        return TBLogger(out_dir)
+        tb = TBLogger(out_dir)
+        return tb if tb.w is not None else NoopLogger()
     if which == 'wandb':
         return WBLogger(project='llm-part4')
     return NoopLogger()

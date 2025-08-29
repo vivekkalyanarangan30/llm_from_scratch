@@ -4,16 +4,19 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]/'part_3'))
-
+import time
 import torch
 import shutil
+import torch.nn as nn
 
 DEF_NAME = "model_last.pt"
 
 # ----------------------------- TB-only helpers (safe no-ops otherwise) ----------------------------- #
 def _is_tb(logger) -> bool:
-    return hasattr(logger, "hist")
+    return getattr(logger, "w", None) is not None
 
+
+# checkpointing._log_hparams_tb
 def _log_hparams_tb(logger, args, total_steps):
     if not _is_tb(logger): return
     try:
@@ -68,27 +71,58 @@ def _log_model_stats(logger, model, step: int, do_hists: bool = False):
     except Exception:
         pass
 
-def _maybe_log_attention(logger, model, step: int, every: int = 100, window: int = 2):
-    if not _is_tb(logger): return
-    if step == 0 or (step % every): return
+def _maybe_log_attention(logger, model, xb, step: int, every: int = 100):
+    """
+    Logs Q/K/V histograms for each Transformer block using the current minibatch xb.
+    No model edits. No hooks. Runs a light no-grad recomputation of the pre-attn path.
+    - Takes first batch and first head only to keep logs tiny.
+    - Uses pre-RoPE values (simpler & stable for histograms).
+    """
+    if not _is_tb(logger) or step == 0 or (step % every):
+        return
     try:
-        with torch.no_grad():
-            for name, m in model.named_modules():
-                p = getattr(m, "last_attn", None)  # [B,H,Tq,Tk]
-                if p is None: continue
-                eps = 1e-12
-                p_eps = p.clamp_min(eps)
-                ent = (-p_eps * p_eps.log()).sum(dim=-1).mean().item()
-                B,H,Tq,Tk = p.shape
-                i = torch.arange(Tq, device=p.device).unsqueeze(-1)
-                j = torch.arange(Tk, device=p.device).unsqueeze(0)
-                diag = ((p * ((j - i).abs() <= window)).sum(dim=-1)).mean().item()
-                logger.log(step=step, **{
-                    f"attn/{name}/entropy": ent,
-                    f"attn/{name}/diagonal_mass_w{window}": diag
-                })
-    except Exception:
-        pass
+        import torch
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=False):
+            # Recreate inputs seen by blocks
+            x = model.tok_emb(xb)           # (B,T,C)
+            x = model.drop(x)
+
+            B, T, _ = x.shape
+            for li, blk in enumerate(getattr(model, "blocks", [])):
+                h = blk.ln1(x)              # pre-attn normalized hidden
+
+                attn = blk.attn
+                # Project to Q/K/V exactly like the module (pre-RoPE for simplicity)
+                q = attn.wq(h).view(B, T, attn.n_head,   attn.d_head).transpose(1, 2)      # (B,H,T,D)
+                k = attn.wk(h).view(B, T, attn.n_kv_head, attn.d_head).transpose(1, 2)     # (B,Hk,T,D)
+                v = attn.wv(h).view(B, T, attn.n_kv_head, attn.d_head).transpose(1, 2)     # (B,Hk,T,D)
+
+                # Take a tiny slice to keep logs light
+                q1 = q[:1, :1].contiguous().view(-1).float().cpu()
+                k1 = k[:1, :1].contiguous().view(-1).float().cpu()
+                v1 = v[:1, :1].contiguous().view(-1).float().cpu()
+
+                # Drop non-finite (defensive)
+                q1 = q1[torch.isfinite(q1)]
+                k1 = k1[torch.isfinite(k1)]
+                v1 = v1[torch.isfinite(v1)]
+
+                if q1.numel() > 0: logger.hist(f"qkv/block{li}/q_hist", q1, step)
+                if k1.numel() > 0: logger.hist(f"qkv/block{li}/k_hist", k1, step)
+                if v1.numel() > 0: logger.hist(f"qkv/block{li}/v_hist", v1, step)
+
+                # Optional small scalars (norms) that show up on Time Series
+                if q1.numel(): logger.log(step=step, **{f"qkv/block{li}/q_l2_mean": float(q1.square().mean().sqrt())})
+                if k1.numel(): logger.log(step=step, **{f"qkv/block{li}/k_l2_mean": float(k1.square().mean().sqrt())})
+                if v1.numel(): logger.log(step=step, **{f"qkv/block{li}/v_l2_mean": float(v1.square().mean().sqrt())})
+
+                # Advance x to next block with a CHEAP approximation to avoid doubling full compute:
+                # use the model's own FFN path only; skip re-running attention (we're only logging pre-attn stats).
+                x = x + blk.ffn(blk.ln2(x))
+
+    except Exception as e:
+        print(f"[qkv] logging failed: {e}")
+
 
 def _log_runtime(logger, step: int, it_t0: float, xb, device):
     try:
@@ -120,23 +154,19 @@ def _log_samples_tb(logger, model, tok, xb, device, step: int, max_new_tokens: i
 
 def _extract_config_from_model(model) -> dict:
     """
-    Best-effort extraction of GPTModern-like config.
-    Falls back to {} for generic models (e.g., tests' Dummy()).
+    Best-effort extraction of GPTModern-like config including GQA fields.
     """
     cfg = {}
     try:
-        # Only proceed if model looks like your GPT
         tok_emb = getattr(model, "tok_emb", None)
         blocks = getattr(model, "blocks", None)
-        if tok_emb is None or blocks is None or len(blocks) == 0:
-            return cfg  # generic model → no config
+        if tok_emb is None or not blocks:
+            return cfg
 
-        import torch.nn as nn
         try:
             from swiglu import SwiGLU  # optional
         except Exception:
-            class SwiGLU:  # dummy sentinel
-                pass
+            class SwiGLU: pass
 
         cfg["vocab_size"] = int(tok_emb.num_embeddings)
         cfg["block_size"]  = int(getattr(model, "block_size", 0) or 0)
@@ -144,24 +174,30 @@ def _extract_config_from_model(model) -> dict:
 
         first_blk = blocks[0]
         attn = getattr(first_blk, "attn", None)
-        if attn is None or not hasattr(attn, "n_head") or not hasattr(attn, "d_head"):
-            return cfg  # partial info is fine
+        if attn is None:
+            return cfg
 
-        cfg["n_head"] = int(attn.n_head)
-        cfg["n_embd"] = int(attn.n_head * attn.d_head)
-        # dropout if present
+        # Heads & dims
+        cfg["n_head"]   = int(getattr(attn, "n_head"))
+        d_head          = int(getattr(attn, "d_head"))
+        cfg["n_embd"]   = int(cfg["n_head"] * d_head)
+        cfg["n_kv_head"]= int(getattr(attn, "n_kv_head", cfg["n_head"]))  # default to MHA
+
+        # Dropout (if present)
         drop = getattr(attn, "dropout", None)
-        cfg["dropout"] = float(getattr(drop, "p", 0.0))
+        cfg["dropout"] = float(getattr(drop, "p", 0.0)) if drop is not None else 0.0
 
+        # Norm/FFN style
         cfg["use_rmsnorm"] = isinstance(getattr(model, "ln_f", None), nn.Identity)
         cfg["use_swiglu"]  = isinstance(getattr(first_blk, "ffn", None), SwiGLU)
 
-        # optional extras
+        # Positional / attention tricks
         for k in ("rope", "max_pos", "sliding_window", "attention_sink"):
             if hasattr(attn, k):
-                cfg[k] = getattr(attn, k)
+                val = getattr(attn, k)
+                cfg[k] = int(val) if isinstance(val, bool) else val
     except Exception:
-        return {}  # never break save on extraction problems
+        return {}
     return cfg
 
 def _verify_model_matches(model, cfg: Dict[str, Any]) -> Tuple[bool, str]:
@@ -172,26 +208,35 @@ def _verify_model_matches(model, cfg: Dict[str, Any]) -> Tuple[bool, str]:
         "n_head":     cfg.get("n_head"),
         "n_embd":     cfg.get("n_embd"),
         "vocab_size": cfg.get("vocab_size"),
+        "n_kv_head":  cfg.get("n_kv_head", cfg.get("n_head")),
     }
     got = {
         "block_size": int(getattr(model, "block_size", -1)),
         "n_layer":    int(len(model.blocks)),
+        "vocab_size": int(model.tok_emb.num_embeddings),
     }
     first_blk = model.blocks[0]
     got.update({
         "n_head":     int(first_blk.attn.n_head),
         "n_embd":     int(first_blk.attn.n_head * first_blk.attn.d_head),
-        "vocab_size": int(model.tok_emb.num_embeddings),
+        "n_kv_head":  int(getattr(first_blk.attn, "n_kv_head", first_blk.attn.n_head)),
     })
     diffs = [f"{k}: ckpt={expected[k]} vs model={got[k]}" for k in expected if expected[k] != got[k]]
     if diffs:
         return False, "Architecture mismatch:\n  " + "\n  ".join(diffs)
     return True, "ok"
 
+
 def save_checkpoint(model, optimizer, scheduler, amp, step: int, out_dir: str,
                     tokenizer_dir: str | None = None, config: dict | None = None):
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    cfg = config if config is not None else _extract_config_from_model(model)
+
+    # Prefer the model’s own config if available (e.g., a dict or dataclass with __dict__/asdict)
+    if hasattr(model, "config"):
+        cfg_obj = model.config
+        cfg = dict(cfg_obj) if isinstance(cfg_obj, dict) else getattr(cfg_obj, "__dict__", None) or _extract_config_from_model(model)
+    else:
+        cfg = config if config is not None else _extract_config_from_model(model)
 
     torch.save({
         "model": model.state_dict(),
@@ -199,21 +244,26 @@ def save_checkpoint(model, optimizer, scheduler, amp, step: int, out_dir: str,
         "scheduler": scheduler.state_dict() if hasattr(scheduler, "state_dict") else None,
         "amp_scaler": amp.scaler.state_dict() if amp and getattr(amp, "scaler", None) else None,
         "step": int(step),
-        **({"config": cfg} if cfg else {}),  # only write if we have something
+        "config": cfg,   # ← always write config
+        "version": "part4-v2",
     }, out / DEF_NAME)
 
     if tokenizer_dir is not None:
         (out / "tokenizer_dir.txt").write_text(tokenizer_dir)
 
 
+
 def load_checkpoint(model, path: str, optimizer=None, scheduler=None, amp=None, strict: bool = True):
     ckpt = torch.load(path, map_location="cpu")
 
     cfg = ckpt.get("config")
-    if cfg:  # only verify when we actually saved a config
-        ok, msg = _verify_model_matches(model, cfg)  # same helper as before
+    if cfg:
+        ok, msg = _verify_model_matches(model, cfg)
         if not ok:
-            raise RuntimeError(msg + "\nRebuild the model with the saved config, or load with strict=False.")
+            raise RuntimeError(msg + "\nRebuild the model with this config, or load with strict=False.")
+    else:
+        # Legacy checkpoint without config: strongly encourage a rebuild step elsewhere
+        print("[compat] Warning: checkpoint has no config; cannot verify architecture.")
 
     missing, unexpected = model.load_state_dict(ckpt["model"], strict=strict)
     if strict and (missing or unexpected):
@@ -223,16 +273,11 @@ def load_checkpoint(model, path: str, optimizer=None, scheduler=None, amp=None, 
         optimizer.load_state_dict(ckpt["optimizer"])
     if scheduler is not None and ckpt.get("scheduler") is not None and hasattr(scheduler, "load_state_dict"):
         scheduler.load_state_dict(ckpt["scheduler"])
-    elif scheduler is not None and ckpt.get("scheduler") and hasattr(scheduler, "__dict__"):
-        # best-effort legacy path (your original behavior)
-        for k, v in ckpt["scheduler"].items():
-            if k != "optimizer":
-                setattr(scheduler, k, v)
-
     if amp is not None and ckpt.get("amp_scaler") is not None and getattr(amp, "scaler", None):
         amp.scaler.load_state_dict(ckpt["amp_scaler"])
 
     return ckpt.get("step", 0)
+
 
 # ----------------------------- checkpoint/save utils ----------------------------- #
 def checkpoint_paths(out_dir: Path, step: int):

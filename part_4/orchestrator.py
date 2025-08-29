@@ -19,6 +19,7 @@
 #   cd part_4
 #   python orchestrator.py --demo      # tiny smoke run on ../tiny.txt
 #   pytest -q
+#   tensorboard --logdir=runs/part4-demo
 
 import argparse, pathlib, subprocess, sys, shlex
 
