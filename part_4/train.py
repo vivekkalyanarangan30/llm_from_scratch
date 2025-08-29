@@ -8,7 +8,8 @@ import torch.nn as nn
 import sys
 from pathlib import Path as _P
 sys.path.append(str(_P(__file__).resolve().parents[1]/'part_3'))
-from model_utils.model_modern import GPTModern  # noqa: E402
+
+from model_modern import GPTModern
 
 from tokenizer_bpe import BPETokenizer
 from dataset_bpe import make_loader

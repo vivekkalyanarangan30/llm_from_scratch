@@ -2,6 +2,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]/'part_3'))
 
 import torch
 import shutil
@@ -131,7 +133,7 @@ def _extract_config_from_model(model) -> dict:
 
         import torch.nn as nn
         try:
-            from model_utils.swiglu import SwiGLU  # optional
+            from swiglu import SwiGLU  # optional
         except Exception:
             class SwiGLU:  # dummy sentinel
                 pass
