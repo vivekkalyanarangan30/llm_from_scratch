@@ -40,6 +40,6 @@ if __name__ == "__main__":
 
     # 2) optional demo
     if args.demo:
-        run("python demo_moe.py --tokens 64 --hidden 128 --experts 4 --top_k 1")
+        run("python demo_moe.py --tokens 6 --hidden 128 --experts 4 --top_k 1")
 
     print("\nPart 5 checks complete. ✅")
