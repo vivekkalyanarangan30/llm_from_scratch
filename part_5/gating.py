@@ -36,8 +36,8 @@ class TopKGate(nn.Module):
         load.scatter_add_(0, hard1, torch.ones_like(hard1, dtype=load.dtype))
         load = load / max(S, 1)
         aux_loss = (E * (importance * load).sum())
-        print("*"*50)
-        print(probs, importance, hard1, load, aux_loss)
-        print("*"*50)
+        # print("*"*50)
+        # print(probs, importance, hard1, load, aux_loss)
+        # print("*"*50)
 
         return topk_idx, topk_vals, aux_loss
