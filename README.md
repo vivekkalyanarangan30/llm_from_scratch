@@ -45,8 +45,7 @@ pip install -r requirements.txt
 ## Part 5 — Mixture-of-Experts (MoE)
 - **5.1** MoE theory: expert routing, gating networks, and load balancing
 - **5.2** Implementing MoE layers in PyTorch
-- **5.3** Training stability and communication overhead in distributed setups
-- **5.4** Combining MoE with dense layers for hybrid architectures
+- **5.3** Combining MoE with dense layers for hybrid architectures
 
 ## Part 6 — Supervised Fine-Tuning (SFT)
 - **6.1** Instruction dataset formatting (prompt + response)
