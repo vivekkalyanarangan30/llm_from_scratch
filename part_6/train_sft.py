@@ -2,12 +2,13 @@ from __future__ import annotations
 import argparse, torch
 import torch.nn as nn
 from pathlib import Path
+torch.manual_seed(0)
 
 # Reuse GPTModern from Part 3
 import sys
 from pathlib import Path as _P
 sys.path.append(str(_P(__file__).resolve().parents[1]/'part_3'))
-from model_utils.model_modern import GPTModern  # noqa: E402
+from model_modern import GPTModern  # noqa: E402
 
 from dataset_sft import load_tiny_hf
 from collator_sft import SFTCollator
@@ -17,6 +18,7 @@ from curriculum import LengthCurriculum
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--data', type=str, default='huggingface', help='huggingface or path to local jsonl (unused in demo)')
+    p.add_argument('--ckpt', type=str, required=False)
     p.add_argument('--out', type=str, default='runs/sft')
     p.add_argument('--steps', type=int, default=200)
     p.add_argument('--batch_size', type=int, default=8)
@@ -32,17 +34,29 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu else 'cpu')
 
     # Load a tiny HF slice or fallback examples
-    items = load_tiny_hf(split='train[:200]')
+    items = load_tiny_hf(split='train[:24]', sample_dataset=False)
+
+    # Print few samples
+    print(f"Loaded {len(items)} SFT items. Few samples:")
+    for it in items[:3]:
+        print(f"PROMPT: {it.prompt}\nRESPONSE: {it.response}\n{'-'*40}")
 
     # Curriculum over (prompt,response)
     tuples = [(it.prompt, it.response) for it in items]
     cur = list(LengthCurriculum(tuples))
+    print(cur)
 
     # Collator + model
     col = SFTCollator(block_size=args.block_size, bpe_dir=args.bpe_dir)
     model = GPTModern(vocab_size=col.vocab_size, block_size=args.block_size,
                       n_layer=args.n_layer, n_head=args.n_head, n_embd=args.n_embd,
                       use_rmsnorm=True, use_swiglu=True, rope=True).to(device)
+
+    if args.ckpt:
+        print(f"Using model config from checkpoint {args.ckpt}")
+        ckpt = torch.load(args.ckpt, map_location=device)
+        cfg = ckpt.get('config', {})
+        model.load_state_dict(ckpt['model'])
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
     model.train()
@@ -54,7 +68,9 @@ def main():
         batch = cur[i:i+args.batch_size]
         if not batch:
             # restart curriculum
-            cur = list(LengthCurriculum(tuples)); i = 0; continue
+            # cur = list(LengthCurriculum(tuples)); 
+            i = 0
+            continue
         xb, yb = col.collate(batch)
         xb, yb = xb.to(device), yb.to(device)
         logits, loss, _ = model(xb, yb)

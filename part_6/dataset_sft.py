@@ -7,6 +7,7 @@ import traceback
 try:
     from datasets import load_dataset
 except Exception:
+    print("Couldn't import `datasets`. Will use fallback data only.")
     load_dataset = None
 
 from formatters import Example
@@ -17,12 +18,12 @@ class SFTItem:
     response: str
 
 
-def load_tiny_hf(split: str = "train[:200]") -> List[SFTItem]:
+def load_tiny_hf(split: str = "train[:200]", sample_dataset: bool = False) -> List[SFTItem]:
     """Try to load a tiny instruction dataset from HF; fall back to a baked-in list.
     We use `tatsu-lab/alpaca` as a familiar schema (instruction, input, output) and keep only a slice.
     """
     items: List[SFTItem] = []
-    if load_dataset is not None:
+    if load_dataset is not None and not sample_dataset:
         try:
             ds = load_dataset("tatsu-lab/alpaca", split=split)
             for row in ds:
@@ -38,10 +39,9 @@ def load_tiny_hf(split: str = "train[:200]") -> List[SFTItem]:
     if not items:
         # fallback tiny list
         seeds = [
-            ("Explain what a transformer is in one sentence.", "A transformer is a neural network that uses attention to weigh relationships between tokens and model sequences effectively."),
-            ("List three prime numbers.", "2, 3, 5."),
-            ("Write a Python function that returns the square of a number.", "def square(x):\n    return x*x"),
-            ("Translate to French: 'good morning'", "bonjour"),
+            ("First prime number", "2"),
+            ("What are the three primary colors?", "red"),
+            ("Device name which points to direction?", "compass"),
         ]
         items = [SFTItem(prompt=p, response=r) for p,r in seeds]
     return items

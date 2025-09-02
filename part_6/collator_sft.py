@@ -18,7 +18,7 @@ try:
 except Exception:
     ByteTokenizer = None
 
-from formatters import Example, format_example
+from formatters import Example, format_example, format_prompt_only
 
 class SFTCollator:
     """Turn (instruction,response) into token ids and masked labels for causal LM (6.2).
@@ -34,6 +34,7 @@ class SFTCollator:
                 self.tok = BPETokenizer(vocab_size=8000)
                 if bpe_dir:
                     self.tok.load(bpe_dir)
+                    print(f"Loaded BPE tokenizer from {bpe_dir}")
                 else:
                     # weak ad-hoc training would belong elsewhere; for the demo we assume Part 4 tokenizer exists
                     pass
@@ -63,15 +64,17 @@ class SFTCollator:
         input_ids = []
         labels = []
         for prompt, response in batch:
+            prefix_text = format_prompt_only(prompt).replace('</s>','')
             text = format_example(Example(prompt, response))
             ids = self.encode(text)[:self.block_size]
-            # find boundary: index where response actually starts in the formatted string
-            boundary = text.index("### Response:") + len("### Response:\n")
-            prompt_ids = self.encode(text[:boundary])
+            prompt_ids = self.encode(prefix_text)[:self.block_size]
             n_prompt = min(len(prompt_ids), len(ids))
             x = ids
             y = ids.copy()
-            for i in range(n_prompt):
+            for t in range(len(y) - 1):
+                y[t] = ids[t + 1]
+            y[-1] = -100
+            for i in range(n_prompt-1):
                 y[i] = -100
             input_ids.append(x)
             labels.append(y)
@@ -80,6 +83,6 @@ class SFTCollator:
             if len(ids) < self.block_size:
                 ids = ids + [val]*(self.block_size - len(ids))
             return ids[:self.block_size]
-        x = torch.tensor([pad_to(s, 0) for s in input_ids], dtype=torch.long)
+        x = torch.tensor([pad_to(s, 2) for s in input_ids], dtype=torch.long)
         y = torch.tensor([pad_to(s, -100) for s in labels], dtype=torch.long)
         return x, y

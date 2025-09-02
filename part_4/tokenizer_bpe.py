@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Union
 
 try:
-    from tokenizers import ByteLevelBPETokenizer
+    from tokenizers import ByteLevelBPETokenizer, Tokenizer
 except Exception:
     ByteLevelBPETokenizer = None
 
@@ -34,6 +34,7 @@ class BPETokenizer:
         out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
         assert self._tok is not None, "Train or load before save()."
         self._tok.save_model(str(out))
+        self._tok.save(str(out / "tokenizer.json"))
         meta = {"vocab_size": self.vocab_size, "special_tokens": self.special_tokens}
         (out/"bpe_meta.json").write_text(json.dumps(meta))
 
@@ -42,6 +43,7 @@ class BPETokenizer:
         # Prefer explicit filenames; fall back to glob if needed.
         vocab = dirp / "vocab.json"
         merges = dirp / "merges.txt"
+        tokenizer = dirp / "tokenizer.json"
         if not vocab.exists() or not merges.exists():
             # Fallback for custom basenames
             vs = list(dirp.glob("*.json"))
@@ -50,7 +52,8 @@ class BPETokenizer:
                 raise FileNotFoundError(f"Could not find vocab.json/merges.txt in {dirp}")
             vocab = vs[0]
             merges = ms[0]
-        tok = ByteLevelBPETokenizer(str(vocab), str(merges))
+        # tok = ByteLevelBPETokenizer(str(vocab), str(merges))
+        tok = Tokenizer.from_file(str(tokenizer))
         self._tok = tok
         meta_file = dirp / "bpe_meta.json"
         if meta_file.exists():

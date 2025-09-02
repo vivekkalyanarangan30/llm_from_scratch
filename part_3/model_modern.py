@@ -17,7 +17,7 @@ class GPTModern(nn.Module):
         super().__init__()
         self.block_size = block_size
         self.tok_emb = nn.Embedding(vocab_size, n_embd)
-        self.pos_emb = nn.Embedding(block_size, n_embd)
+        # self.pos_emb = nn.Embedding(block_size, n_embd)
         self.drop = nn.Dropout(dropout)
         self.blocks = nn.ModuleList([
             TransformerBlockModern(n_embd, n_head, dropout, use_rmsnorm, use_swiglu, rope, max_pos, sliding_window, attention_sink, n_kv_head)
@@ -49,8 +49,15 @@ class GPTModern(nn.Module):
         return logits, loss, new_caches
 
     @torch.no_grad()
-    def generate(self, prompt: torch.Tensor, max_new_tokens=200, temperature=1.0, top_k=50, top_p=None,
-                sliding_window: int | None = None, attention_sink: int = 0):
+    def generate(self, 
+                 prompt: torch.Tensor, 
+                 max_new_tokens=200, 
+                 temperature=1.0, 
+                 top_k=50, 
+                 top_p=None,
+                 eos_id=1, # addition from part 6 for early stopping
+                 sliding_window: int | None = None, 
+                 attention_sink: int = 0):
         try:
             from utils import top_k_top_p_filtering as _tk
         except Exception:
@@ -74,6 +81,11 @@ class GPTModern(nn.Module):
             probs = torch.softmax(next_logits, dim=-1)
             next_id = torch.argmax(probs, dim=-1, keepdim=True) if temperature == 0.0 else torch.multinomial(probs, 1)
             idx = torch.cat([idx, next_id], dim=1)
+
+            # addition from part 6 for early stopping
+            if eos_id is not None:
+                if (next_id == eos_id).all():
+                    break
 
         return idx
 
@@ -100,6 +112,9 @@ class GPTModern(nn.Module):
             next_logits = logits[:, -1, :] / max(temperature, 1e-6)
             next_logits = _tk(next_logits, top_k=top_k, top_p=top_p)
             probs = torch.softmax(next_logits, dim=-1)
+            topv, topi = torch.topk(probs, 10)
+            print("top ids:", topi.tolist())
+            print("top vs:", topv.tolist())
             next_id = torch.argmax(probs, dim=-1, keepdim=True) if temperature == 0.0 else torch.multinomial(probs, 1)
             idx = torch.cat([idx, next_id], dim=1)
 
