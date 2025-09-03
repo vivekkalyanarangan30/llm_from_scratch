@@ -21,8 +21,7 @@ class RewardModel(nn.Module):
         B, T = x.shape
         pos = torch.arange(T, device=x.device).unsqueeze(0)
         h = self.tok_emb(x) + self.pos_emb(pos)
-        # padding id assumed 0 → mask True where pad
-        pad_mask = (x == 0)
+        pad_mask = (x == 2)
         h = self.encoder(h, src_key_padding_mask=pad_mask)
         h = self.ln(h)
         # masked mean pool over tokens (ignoring pads)

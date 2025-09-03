@@ -26,7 +26,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu else 'cpu')
 
     # data
-    items = load_preferences(split='train[:200]')
+    items = load_preferences(split='train[:80]')
     triples = [(it.prompt, it.chosen, it.rejected) for it in items]
 
     # collator + model

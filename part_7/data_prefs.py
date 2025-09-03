@@ -28,6 +28,7 @@ def load_preferences(split: str = "train[:200]") -> List[PrefExample]:
                 if ch and rj:
                     items.append(PrefExample(prompt="", chosen=ch, rejected=rj))
         except Exception:
+            print("Failed to load Anthropic/hh-rlhf dataset. Using fallback toy pairs.")
             pass
     if not items:
         # fallback toy pairs
