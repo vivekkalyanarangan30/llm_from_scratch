@@ -75,7 +75,7 @@ def main():
     opt = torch.optim.AdamW(policy.parameters(), lr=args.lr, betas=(0.9, 0.999))
 
     # small prompt pool
-    prompts = sample_prompts(256)
+    prompts = sample_prompts(16)
 
     step = 0
     while step < args.steps:
@@ -83,19 +83,15 @@ def main():
         batch_prompts = prompts[ (step*args.batch_size) % len(prompts) : ((step+1)*args.batch_size) % len(prompts) ]
         if len(batch_prompts) < args.batch_size:
             batch_prompts += prompts[:args.batch_size-len(batch_prompts)]
-        texts = [format_prompt_only(p) for p in batch_prompts]
+        texts = [format_prompt_only(p).replace("</s>", "") for p in batch_prompts]
         in_ids = [tok.encode(t) for t in texts]
 
-        # pad to block_size
-        def pad_to(ids, val):
-            if len(ids) < tok.block_size:
-                ids = ids + [val]*(tok.block_size - len(ids))
-            return ids[:tok.block_size]
-        x = torch.tensor([pad_to(ids, 0) for ids in in_ids], dtype=torch.long, device=device)
-
         with torch.no_grad():
-            out = policy.generate(x, max_new_tokens=args.resp_len, temperature=1.0, top_k=50)
-        out_ids = out.tolist()  # (B, T+resp)
+            out_ids = []
+            for i, x in enumerate(in_ids):
+                idx = torch.tensor([x], dtype=torch.long, device=device)
+                out = policy.generate(idx, max_new_tokens=args.resp_len, temperature=0.2, top_k=3)
+                out_ids.append(out[0].tolist())
 
         # split prompt/response per sample
         data = []
