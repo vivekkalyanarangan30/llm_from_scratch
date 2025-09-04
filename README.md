@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ## Part 7 — Reward Modeling
 - **7.1** Preference datasets (pairwise rankings)
-- **7.2** Reward model architecture (shared transformer encoder)
+- **7.2** Reward model architecture (transformer encoder)
 - **7.3** Loss functions: Bradley–Terry, margin ranking loss
 - **7.4** Sanity checks for reward shaping
 
