@@ -2,6 +2,9 @@ from __future__ import annotations
 import argparse, torch
 from pathlib import Path
 
+# import torch
+# torch.manual_seed(0)
+
 from policy import PolicyWithValue
 from rollout import RLHFTokenizer, format_prompt_only, format_example, sample_prompts, gather_logprobs, shift_labels
 from rollout import model_logprobs
@@ -122,6 +125,8 @@ def main():
             drop = L_full - L                 # tokens dropped from the left
             b = max(0, boundary - drop)       # shift boundary after left-trim
             seq[i, :L] = ids[-L:]
+            if L < max_len:
+                seq[i, L:] = 2  # fill remaining positions with <pad> token
             mask[i, b:L] = True
             rewards[i, L-1] = r_scalar
             last_idx[i] = L-1
@@ -144,7 +149,7 @@ def main():
 
         # KL per action token and shaped rewards
         kl = (old_logp - ref_logp)
-        shaped_r = rewards[:,1:][act_mask] - args.kl_coef * kl
+        shaped_r = rewards[:,1:][act_mask] - args.kl_coef * kl # penalty for drifting
 
         # Compute advantages/returns with last‑step bootstrap = 0 (episodic per response)
         # Flatten by sequence order inside each sample; we’ll approximate by grouping tokens per sample using last_idx.
@@ -155,6 +160,7 @@ def main():
         adv = (adv - adv.mean()) / (adv.std().clamp_min(1e-6))
 
         # ----- UPDATE (single pass PPO for demo) -----
+        # This step is done multiple times per batch in practice 
         policy.train()
         logits_new, values_new_full, _ = policy(seq, None)
         logp_full = torch.log_softmax(logits_new[:, :-1, :], dim=-1)
@@ -174,9 +180,23 @@ def main():
         opt.step()
         policy.eval()
 
+        with torch.no_grad():
+            # KL(old || new): movement of the updated policy from the snapshot used to collect data
+            lp_post = model_logprobs(policy, seq)          # (B, T-1)
+            lp_post = lp_post[act_mask]                    # only action positions
+            kl_post = (old_logp - lp_post).mean()          # ≈ E[log π_old - log π_new]
+
+            # KL(now || ref): how far the current policy is from the frozen reference
+            lp_now = lp_post                               # already computed above on the same positions
+            kl_ref_now = (lp_now - ref_logp).mean()        # ≈ E[log π_now - log π_ref]
+
         step += 1
         if step % 10 == 0:
-            print(f"step {step} | loss {loss.item():.4f} | policy {out_loss.policy_loss.item():.4f} | value {out_loss.value_loss.item():.4f} | KL~ {out_loss.approx_kl.item():.4f}")
+            print(
+                f"step {step} | loss {loss.item():.4f}"
+                f"| value loss {out_loss.value_loss.item():.4f} | KL_move {kl_post.item():.6f} | KL_ref {kl_ref_now.item():.6f}"
+            )
+
 
     Path(args.out).mkdir(parents=True, exist_ok=True)
     torch.save({'model': policy.state_dict(), 'config': {

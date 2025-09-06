@@ -88,7 +88,7 @@ except Exception:
 def sample_prompts(n: int) -> List[str]:
     if _load_ds is not None:
         try:
-            ds = _load_ds("tatsu-lab/alpaca", split="train[:16]")
+            ds = _load_ds("tatsu-lab/alpaca", split="train[:24]")
             arr = []
             for r in ds:
                 inst = (r.get('instruction') or '').strip()
