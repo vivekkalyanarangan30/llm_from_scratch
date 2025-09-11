@@ -65,3 +65,10 @@ pip install -r requirements.txt
 - **8.3** PPO objective: balance between maximizing reward and staying close to the SFT policy (KL penalty).
 - **8.4** Training loop: sample prompts → generate completions → score with reward model → optimize policy via PPO.
 - **8.5** Logging & stability tricks: reward normalization, KL-controlled rollout length, gradient clipping.
+
+## Part 9 — RLHF with GRPO
+- **9.1** Group-relative baseline: instead of a value head, multiple completions are sampled per prompt and their rewards are normalized against the group mean.
+- **9.2** Advantage calculation: each completion’s advantage = (reward – group mean reward), broadcast to all tokens in that trajectory.
+- **9.3** Objective: PPO-style clipped policy loss, but *policy-only* (no value loss).
+- **9.4** KL regularization: explicit KL(π‖π_ref) penalty term added directly to the loss (not folded into the advantage).
+- **9.5** Training loop differences: sample `k` completions per prompt → compute rewards → subtract per-prompt mean → apply GRPO loss with KL penalty.
