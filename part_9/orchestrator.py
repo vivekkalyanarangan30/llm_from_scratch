@@ -1,10 +1,10 @@
-# Repository layout (Part 8 — RLHF with PPO)
+# Repository layout (Part 8 — RLHF with GRPO)
 #
-#   part_8/
+#   part_9/
 #     orchestrator.py          # run unit tests + optional tiny PPO demo
 #     policy.py                # policy = SFT LM + value head (toy head on logits)
 #     rollout.py               # prompt formatting, sampling, logprobs/KL utilities
-#     ppo_loss.py              # PPO clipped objective + value + entropy + KL penalty
+#     grpo_loss.py              # PPO clipped objective + value + entropy + KL penalty
 #     train_ppo.py             # single‑GPU RLHF loop (tiny, on‑policy)
 #     eval_ppo.py              # compare reward vs. reference on a small set
 #     tests/
