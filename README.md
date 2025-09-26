@@ -1,5 +1,7 @@
 # LLM from Scratch — Hands-On Curriculum (PyTorch)
 
+[![Watch the video](https://img.youtube.com/vi/p3sij8QzONQ/0.jpg)](https://youtu.be/p3sij8QzONQ?si=yEuD584cBZRNiUYm)
+
 ## Part 0 — Foundations & Mindset
 - **0.1** Understanding the high-level LLM training pipeline (pretraining → finetuning → alignment)
 - **0.2** Hardware & software environment setup (PyTorch, CUDA/Mac, mixed precision, profiling tools)
