@@ -1,4 +1,4 @@
-# Repository layout (Part 8 — RLHF with GRPO)
+# Repository layout (Part 9 — RLHF with GRPO)
 #
 #   part_9/
 #     orchestrator.py          # run unit tests + optional tiny PPO demo
@@ -27,7 +27,7 @@ def run(cmd: str):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--demo", action="store_true", help="tiny PPO demo")
+    p.add_argument("--demo", action="store_true", help="tiny GRPO demo")
     args = p.parse_args()
 
     # 1) unit tests
@@ -38,4 +38,4 @@ if __name__ == "__main__":
         run("python train_grpo.py --group_size 4 --policy_ckpt ../part_6/runs/sft-demo/model_last.pt --reward_ckpt ../part_7/runs/rm-demo/model_last.pt --steps 200 --batch_prompts 4 --resp_len 128 --bpe_dir ../part_4/runs/part4-demo/tokenizer")
         run("python eval_ppo.py --policy_ckpt runs/grpo-demo/model_last.pt --reward_ckpt ../part_7/runs/rm-demo/model_last.pt --split train[:24] --bpe_dir ../part_4/runs/part4-demo/tokenizer")
 
-    print("\nPart 8 checks complete. ✅")
+    print("\nPart 9 checks complete. ✅")
