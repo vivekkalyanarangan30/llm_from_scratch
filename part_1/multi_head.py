@@ -12,7 +12,7 @@ class MultiHeadSelfAttention(nn.Module):
       qkv:    (B, T, 3*d_model)
       view→   (B, T, 3, n_head, d_head)   where d_head = d_model // n_head
       split→  q,k,v each (B, T, n_head, d_head)
-      swap→   (B, n_head, T, d_head)
+      swap→   (B, n_head, T, d_head)    # transpose
       scores: (B, n_head, T, T) = q @ k^T / sqrt(d_head)
       weights:(B, n_head, T, T) = softmax(scores)
       ctx:    (B, n_head, T, d_head) = weights @ v

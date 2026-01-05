@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # Reset file
     os.makedirs(os.path.dirname(OUT_TXT), exist_ok=True)
     open(OUT_TXT, 'w').close()
-
+    # Batch size, sequence length, embedding size(dimensions), number of heads(여러 특징 추출)
     B, T, d_model, n_head = 1, 5, 12, 3
     d_head = d_model // n_head
     x = torch.randn(B, T, d_model)
