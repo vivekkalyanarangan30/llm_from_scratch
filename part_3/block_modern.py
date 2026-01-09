@@ -17,7 +17,7 @@ class TransformerBlockModern(nn.Module):
             nn.Linear(n_embd, 4*n_embd), nn.GELU(), nn.Linear(4*n_embd, n_embd), nn.Dropout(dropout)
         )
     def forward(self, x, kv_cache=None, start_pos: int = 0):
-        a, kv_cache = self.attn(self.ln1(x), kv_cache=kv_cache, start_pos=start_pos)
+        a, kv_cache = self.attn(self.ln1(x), kv_cache=kv_cache, start_pos=start_pos)    # start_pos=0부터 시작하여 각 토큰 위치의 회전값, 기존의 토큰은 이미 kv_cache에 저장되어 있음
         x = x + a
         x = x + self.ffn(self.ln2(x))
         return x, kv_cache

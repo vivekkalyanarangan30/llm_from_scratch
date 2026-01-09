@@ -38,7 +38,7 @@ class CausalSelfAttentionModern(nn.Module):
     def forward(self, x: torch.Tensor, kv_cache: KVCache | None = None, start_pos: int = 0):
         """x: (B,T,C). If kv_cache given, we assume generation (T small, often 1)."""
         B, T, C = x.shape
-        self._maybe_init_rope(x.device)
+        self._maybe_init_rope(x.device) # RoPE cache 초기화 cos, sin 계산
 
         # Projections
         q = self.wq(x).view(B, T, self.n_head,   self.d_head).transpose(1, 2)    # (B,H, T,D)
@@ -47,7 +47,7 @@ class CausalSelfAttentionModern(nn.Module):
 
         # RoPE on *current* tokens (cached keys are already rotated)
         if self.use_rope:
-            pos = torch.arange(start_pos, start_pos + T, device=x.device)
+            pos = torch.arange(start_pos, start_pos + T, device=x.device)   # 현재 토큰의 절대 위치 정보 생성
             cos, sin = self.rope_cache.get(pos)
             q = apply_rope_single(q, cos, sin)   # (B,H, T,D)
             k = apply_rope_single(k, cos, sin)   # (B,Hk,T,D)
@@ -62,10 +62,11 @@ class CausalSelfAttentionModern(nn.Module):
         # Sliding-window + attention-sink (crop along seq length)
         if self.sliding_window is not None and k_all.size(2) > (self.sliding_window + self.attention_sink):
             s = self.attention_sink
-            k_all = torch.cat([k_all[:, :, :s, :], k_all[:, :, -self.sliding_window:, :]], dim=2)
-            v_all = torch.cat([v_all[:, :, :s, :], v_all[:, :, -self.sliding_window:, :]], dim=2)
+            k_all = torch.cat([k_all[:, :, :s, :], k_all[:, :, -self.sliding_window:, :]], dim=2)   # 처음 부분(Sink)과 마지막 부분(Window)만 남기고 중간 캐시는 버립니다.
+            v_all = torch.cat([v_all[:, :, :s, :], v_all[:, :, -self.sliding_window:, :]], dim=2)   # 처음부분은 전체적인 문맥, 문법을 유지하는 닻, 마지막은 가장 최근 토큰으로 직접적인 영향
 
         # --- GQA expand: repeat K/V heads to match Q heads before attention ---
+        ## : 줄어든 $K, V$ 헤드를 $Q$ 헤드 수에 맞춰 복사(Expand)합니다. 실제 어텐션 내적을 수행하기 위한 단계입니다.
         if self.n_kv_head != self.n_head:
             k_attn = k_all.repeat_interleave(self.group_size, dim=1)  # (B,H,Tk,D)
             v_attn = v_all.repeat_interleave(self.group_size, dim=1)  # (B,H,Tk,D)
