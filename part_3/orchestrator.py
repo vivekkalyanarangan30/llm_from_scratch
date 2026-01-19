@@ -25,9 +25,9 @@ import argparse, pathlib, subprocess, sys, shlex
 
 ROOT = pathlib.Path(__file__).resolve().parent
 
-def run(cmd: str):
-    print(f"\n>>> {cmd}")
-    res = subprocess.run(shlex.split(cmd), cwd=ROOT)
+def run(cmd_args: list[str]):
+    print(f"\n>>> {' '.join(str(x) for x in cmd_args)}")
+    res = subprocess.run(cmd_args, cwd=ROOT)
     if res.returncode != 0:
         sys.exit(res.returncode)
 
@@ -37,12 +37,12 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     # 1) run unit tests
-    run("python -m pytest -q tests/test_rmsnorm.py")
-    run("python -m pytest -q tests/test_rope_apply.py")
-    run("python -m pytest -q tests/test_kvcache_shapes.py")
+    run([sys.executable, "-m", "pytest", "-q", "tests/test_rmsnorm.py"])
+    run([sys.executable, "-m", "pytest", "-q", "tests/test_rope_apply.py"])
+    run([sys.executable, "-m", "pytest", "-q", "tests/test_kvcache_shapes.py"])
 
     # 2) (optional) generation demo
     if args.demo:
-        run("python demo_generate.py --rmsnorm --rope --swiglu --sliding_window 64 --sink 4 --tokens 200")
+        run([sys.executable, "demo_generate.py", "--rmsnorm", "--rope", "--swiglu", "--sliding_window", "64", "--sink", "4", "--tokens", "200"])
 
     print("\nPart 3 checks complete. ✅")

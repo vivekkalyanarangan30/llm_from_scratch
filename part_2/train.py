@@ -57,6 +57,7 @@ def main():
         model = torch.compile(model)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=args.weight_decay)
+    # Automatic Mixed Precision 
     scaler = torch.cuda.amp.GradScaler(enabled=(args.amp and args.device.type == 'cuda'))
 
     best_val = float('inf')
@@ -66,11 +67,11 @@ def main():
         xb, yb = ds.get_batch('train', args.batch_size, args.device)
         with torch.cuda.amp.autocast(enabled=(args.amp and args.device.type == 'cuda')):
             _, loss = model(xb, yb)
-        opt.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        opt.zero_grad(set_to_none=True) # 이전 기울기 제거
+        scaler.scale(loss).backward()   # amp 사용시 필수, 작은 기울기가 0으로 변하는거 방지 후 역전파
         if args.grad_clip > 0:
-            scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+            scaler.unscale_(opt)    # 기울기를 clip하기전에 원복
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)  # 기울기 상한으로 클리핑
         scaler.step(opt)
         scaler.update()
 

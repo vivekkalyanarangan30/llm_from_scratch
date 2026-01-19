@@ -2,3 +2,5 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 runs/
+uv.lock
+.python-version

@@ -31,7 +31,7 @@ class GPTModern(nn.Module):
         assert T <= self.block_size
         pos = torch.arange(0, T, device=idx.device).unsqueeze(0)
         x = self.tok_emb(idx) 
-        # + self.pos_emb(pos)
+        # + self.pos_emb(pos)   RoPE가 TransformerBlockModern 내부에서 처리됨을 암시
         x = self.drop(x)
 
         new_caches = []

@@ -89,7 +89,7 @@ class GPT(nn.Module):
         logits = self.head(x)
         loss = None
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)) # 텐서를 펼치는 이유는 PyTorch의 손실 함수가 2D 입력을 기대하기 때문
         return logits, loss
 
     @torch.no_grad()
@@ -102,9 +102,9 @@ class GPT(nn.Module):
             idx = torch.full((idx.size(0), 1), 10, dtype=torch.long, device=idx.device)
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.block_size:]
-            logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / max(temperature, 1e-6)
-            logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
+            logits, _ = self(idx_cond)  # forward pass, 추론이니깐 loss가 필없
+            logits = logits[:, -1, :] / max(temperature, 1e-6)  # logits.shape = [B, T, 256], -1로 마지막 바이트에 뭐가 올지 추론
+            logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)    # 확률이 낮은거 거르기
             probs = torch.softmax(logits, dim=-1)
             next_id = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, next_id], dim=1)
